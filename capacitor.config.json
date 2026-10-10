@@ -1,0 +1,12 @@
+{
+  "appId": "com.sores.fabrika",
+  "appName": "Şoreş Fabrika",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#1b1730"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -1,0 +1,19 @@
+A clean 4-column by 3-row grid sprite sheet containing exactly 12 cute chibi cartoon characters, one character per cell, evenly spaced, every character centered inside its own cell and drawn at the SAME size and SAME eye level.
+
+Characters (reading order, left to right, top to bottom):
+1. young apprentice carpenter in blue overalls with a flat cap
+2. carpenter with a brown leather tool apron and pencil behind the ear
+3. chef with a tall white hat and a black moustache
+4. doctor in a white coat with a stethoscope
+5. ninja dressed in dark charcoal with a face mask and red belt
+6. sumo wrestler with a topknot, bare chest and blue mawashi belt
+7. vampire with pale skin, black cape and a red collar
+8. santa claus in a red suit with a big white beard
+9. astronaut in a white space suit with a blue glass visor
+10. friendly boxy retro robot with an antenna and glowing eyes
+11. superhero in a yellow and red costume with a tiny cape
+12. cheerful yellow square-headed sponge character wearing a white shirt and red tie
+
+Art style: premium modern mobile idle-game character art. Chibi proportions, big round head, small body, short arms. Thick dark brown outlines, warm flat colors with soft cel shading and a subtle rim light from above. Waist-up to knee-high framing, standing straight, facing the viewer, friendly smiling expressions. Highly readable when scaled down to 100 pixels tall. Warm woodworking-workshop color harmony: warm creams, wood browns, muted greens, warm reds.
+
+Background: one completely uniform solid pure chroma green colour, hex #00FF00, filling every cell and every gap between the characters. Absolutely no cast shadows, no drop shadows, no gradients, no vignette, no grid lines, no cell borders, no frames, no text, no numbers, no labels, no watermark.

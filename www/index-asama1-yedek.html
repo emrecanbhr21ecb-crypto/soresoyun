@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Şoreş Oyuncak Fabrikası</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    background:#1b1730;
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;
+    touch-action:manipulation;
+  }
+  #game { width:100%; height:100%; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<script src="lib/phaser.min.js"></script>
+<script>
+/* ============================================================
+   ŞOREŞ OYUNCAK FABRİKASI — Aşama 1
+   Phaser 3 · tek dosya · tüm grafikler kod ile çizilir
+   ============================================================ */
+
+const W = 720, H = 1280;
+
+const C = {
+  out:0x2b2545, outS:'#2b2545',
+  wall:0x6f4c96, wallD:0x5e3f82, star:0x7d59a6,
+  floorA:0xf283d2, floorB:0xe872c6,
+  wood:0xc98f56, woodD:0x9c6a3b, woodT:0xdda86e,
+  gold:0xffc93c, goldD:0xe0a417,
+  cash:0x59cf6a, cashD:0x35a545,
+  toy:0x35a7ea, toyD:0x1d7fbd,
+  panel:0x413a63, panelL:0x554b7d, panelD:0x322c4d,
+  green:0x4cc94c, greenD:0x2f9c33,
+  red:0xe8544a, redD:0xba3a32,
+  blue:0x3d8bfd, blueD:0x2a63bd,
+  grey:0x8b8ba0, greyD:0x63637a,
+  white:0xffffff, black:0x2b2545,
+  skin:0xffcc99, skin2:0xc98552, skin3:0x8d5524
+};
+
+/* ---------- yardımcılar ---------- */
+function fmt(n){
+  n = Math.floor(n);
+  if (n < 1000) return ''+n;
+  const u = ['','K','M','B','T','Qa','Qi','Sx','Sp','Oc','No','Dc'];
+  let i = 0;
+  while (n >= 1000 && i < u.length-1){ n /= 1000; i++; }
+  return (n < 10 ? n.toFixed(2) : n < 100 ? n.toFixed(1) : Math.floor(n)) + u[i];
+}
+function fmtP(n){          // fiyat: küçük sayılarda ondalık göster
+  if (n >= 1000) return fmt(n);
+  return (n < 10 ? n.toFixed(2) : n.toFixed(1)).replace(/\.?0+$/,'');
+}
+function F(size, color){
+  return { fontFamily:'"Arial Black","Arial Bold",Arial,sans-serif', fontSize:size+'px',
+           color:color||'#ffffff', stroke:C.outS, strokeThickness:Math.max(3, size*0.18) };
+}
+
+/* ============================================================
+   TEXTURE FABRİKASI — her şey Graphics ile çizilir
+   ============================================================ */
+function mk(scene, key, w, h, fn){
+  const g = scene.make.graphics({add:false});
+  fn(g);
+  g.generateTexture(key, w, h);
+  g.destroy();
+}
+function box(g, col, x, y, w, h, r, lw){
+  g.fillStyle(col,1); g.fillRoundedRect(x,y,w,h,r);
+  if (lw !== 0){ g.lineStyle(lw||6, C.out, 1); g.strokeRoundedRect(x,y,w,h,r); }
+}
+function circ(g, col, x, y, r, lw){
+  g.fillStyle(col,1); g.fillCircle(x,y,r);
+  if (lw !== 0){ g.lineStyle(lw||6, C.out, 1); g.strokeCircle(x,y,r); }
+}
+function tri(g, col, pts, lw){
+  g.fillStyle(col,1); g.fillPoints(pts, true);
+  if (lw !== 0){ g.lineStyle(lw||6, C.out, 1); g.strokePoints(pts, true, true); }
+}
+
+/* ---------- karakter gövdesi (160x180 tuval) ---------- */
+function faceBase(g, skin, headR){
+  box(g, skin, 44, 28, 72, 68, headR===undefined?18:headR);
+}
+function bodyBase(g, shirt){
+  box(g, shirt, 38, 92, 84, 60, 18);
+}
+function arms(g, skin){
+  circ(g, skin, 34, 122, 15);
+  circ(g, skin, 126, 122, 15);
+}
+function eyes(g, y){
+  y = y||58;
+  box(g, C.out, 62, y, 10, 15, 5, 0);
+  box(g, C.out, 88, y, 10, 15, 5, 0);
+}
+function smile(g, y){
+  y = y||82;
+  box(g, C.out, 70, y, 20, 6, 3, 0);
+}
+
+/* --- 9 farklı işçi kostümü --- */
+const WORKERS = [
+  {name:'Çırak',      c:'#8ecaff'},
+  {name:'Doktor',     c:'#ffffff'},
+  {name:'Sünger',     c:'#ffe14d'},
+  {name:'Vampir',     c:'#b07dff'},
+  {name:'Noel Baba',  c:'#ff6b6b'},
+  {name:'Pehlivan',   c:'#ffc07a'},
+  {name:'Ninja',      c:'#9aa0b5'},
+  {name:'Aşçı',       c:'#fff4d6'},
+  {name:'Astronot',   c:'#cfe4ff'}
+];
+
+function drawWorker(g, i){
+  switch(i){
+  case 0: // Çırak — mavi tulum, kahve saç
+    box(g, 0x6b4423, 42, 24, 76, 30, 14);      // saç
+    faceBase(g, C.skin);
+    box(g, 0x6b4423, 42, 24, 76, 22, 10);
+    eyes(g); smile(g);
+    bodyBase(g, 0x3d8bfd);
+    box(g, C.white, 68, 92, 24, 34, 8, 0);     // yaka
+    arms(g, C.skin);
+    break;
+  case 1: // Doktor — beyaz önlük, kırmızı haç
+    box(g, 0x5b3a1e, 42, 24, 76, 26, 12);
+    faceBase(g, C.skin);
+    box(g, C.white, 40, 18, 80, 26, 10);       // hemşire/doktor kepi
+    box(g, C.red, 74, 22, 12, 18, 3, 0);
+    box(g, C.red, 68, 28, 24, 6, 3, 0);
+    eyes(g); smile(g);
+    bodyBase(g, C.white);
+    box(g, 0x2f9ce8, 66, 92, 10, 40, 4, 0);
+    circ(g, 0x9aa0b5, 96, 128, 9, 4);
+    arms(g, C.skin);
+    break;
+  case 2: // Sünger — sarı kare kafa, beyaz gömlek kırmızı kravat
+    box(g, 0xffe14d, 42, 26, 76, 70, 10);
+    circ(g, 0xf0c93a, 60, 46, 7, 0);
+    circ(g, 0xf0c93a, 96, 66, 6, 0);
+    circ(g, 0xf0c93a, 78, 84, 5, 0);
+    circ(g, C.white, 66, 58, 13, 5);
+    circ(g, C.white, 94, 58, 13, 5);
+    circ(g, 0x2f9ce8, 66, 58, 6, 0);
+    circ(g, 0x2f9ce8, 94, 58, 6, 0);
+    circ(g, C.out, 66, 58, 3, 0);
+    circ(g, C.out, 94, 58, 3, 0);
+    box(g, C.out, 68, 80, 24, 6, 3, 0);
+    bodyBase(g, C.white);
+    tri(g, C.red, [{x:80,y:94},{x:70,y:112},{x:90,y:112}], 0);
+    box(g, C.red, 74, 110, 12, 22, 4, 0);
+    box(g, 0x6b4423, 38, 132, 84, 20, 6, 0);
+    arms(g, 0xffe14d);
+    break;
+  case 3: // Vampir — soluk ten, siyah pelerin
+    box(g, 0x1e1a30, 22, 92, 116, 62, 20);     // pelerin
+    box(g, 0x2a2440, 42, 20, 76, 30, 8);       // saç
+    tri(g, 0x2a2440, [{x:66,y:44},{x:80,y:24},{x:94,y:44}], 0);
+    faceBase(g, 0xe8e0f0);
+    eyes(g);
+    box(g, C.out, 68, 80, 24, 8, 3, 0);
+    box(g, C.white, 70, 84, 6, 9, 2, 0);
+    box(g, C.white, 84, 84, 6, 9, 2, 0);
+    bodyBase(g, 0x3a2050);
+    box(g, C.red, 44, 92, 22, 24, 8, 0);
+    box(g, C.red, 94, 92, 22, 24, 8, 0);
+    arms(g, 0xe8e0f0);
+    break;
+  case 4: // Noel Baba
+    faceBase(g, C.skin);
+    box(g, C.white, 44, 74, 72, 34, 16);       // sakal
+    eyes(g, 54);
+    box(g, C.red, 42, 4, 78, 32, 14);          // şapka
+    box(g, C.white, 36, 30, 90, 18, 8);
+    circ(g, C.white, 40, 12, 12);
+    bodyBase(g, C.red);
+    box(g, 0x2b2545, 38, 118, 84, 16, 6, 0);
+    box(g, C.gold, 70, 116, 20, 20, 4, 4);
+    arms(g, C.skin);
+    break;
+  case 5: // Pehlivan — sumo/güreşçi
+    box(g, 0x2b2545, 44, 20, 72, 26, 12);
+    faceBase(g, C.skin2);
+    circ(g, 0x2b2545, 80, 30, 16, 5);
+    eyes(g);
+    box(g, C.out, 66, 80, 28, 8, 4, 0);
+    box(g, C.skin2, 30, 92, 100, 62, 22);      // çıplak gövde
+    g.lineStyle(6, C.out, 1); g.strokeRoundedRect(30, 92, 100, 62, 22);
+    box(g, 0x8b1e1e, 30, 118, 100, 22, 6, 0);
+    circ(g, C.skin2, 26, 126, 16);
+    circ(g, C.skin2, 134, 126, 16);
+    break;
+  case 6: // Ninja
+    box(g, 0x2b2545, 40, 22, 80, 44, 14);
+    faceBase(g, C.skin);
+    box(g, 0x2b2545, 40, 22, 80, 30, 12);
+    box(g, 0x2b2545, 40, 74, 80, 26, 8);
+    eyes(g, 56);
+    box(g, 0x2b2545, 118, 30, 34, 12, 5, 0);   // bandana ucu
+    bodyBase(g, 0x33304d);
+    box(g, C.red, 38, 118, 84, 14, 5, 0);
+    arms(g, C.skin);
+    break;
+  case 7: // Aşçı
+    box(g, 0x8b5a2b, 44, 26, 72, 24, 10);
+    faceBase(g, C.skin);
+    circ(g, C.white, 60, 18, 18);
+    circ(g, C.white, 80, 10, 20);
+    circ(g, C.white, 100, 18, 18);
+    box(g, C.white, 44, 18, 72, 26, 8);
+    eyes(g);
+    box(g, C.out, 70, 82, 20, 6, 3, 0);
+    box(g, 0x2b2545, 62, 88, 36, 10, 4, 0);    // bıyık
+    bodyBase(g, C.white);
+    circ(g, C.out, 66, 108, 4, 0);
+    circ(g, C.out, 66, 126, 4, 0);
+    arms(g, C.skin);
+    break;
+  case 8: // Astronot
+    bodyBase(g, 0xdfe9ff);
+    circ(g, C.white, 80, 62, 44, 6);
+    box(g, 0x1e2a48, 52, 44, 56, 40, 14);
+    box(g, 0x4d94ff, 58, 50, 22, 14, 6, 0);
+    box(g, 0xff9f1c, 36, 108, 20, 26, 6);
+    box(g, 0x4d94ff, 66, 104, 28, 16, 5);
+    arms(g, 0xdfe9ff);
+    break;
+  }
+}
+
+/* --- 5 farklı patron --- */
+const BOSSES = ['Patron','Palyaço','Korsan','Hanım','Sumo'];
+function drawBoss(g, i){
+  switch(i){
+  case 0: // normal patron
+    box(g, 0x5b3a1e, 44, 22, 76, 26, 12);
+    faceBase(g, C.skin);
+    box(g, 0x5b3a1e, 44, 22, 76, 20, 10);
+    eyes(g); smile(g);
+    bodyBase(g, 0x2e3e63);
+    box(g, C.white, 68, 92, 24, 30, 6, 0);
+    box(g, C.red, 74, 100, 12, 26, 4, 0);
+    arms(g, C.skin);
+    break;
+  case 1: // palyaço
+    faceBase(g, 0xfff0dd);
+    circ(g, 0x4dc9ff, 44, 46, 20, 6);
+    circ(g, 0x4cd964, 116, 46, 20, 6);
+    box(g, C.red, 50, 12, 60, 20, 8);
+    box(g, C.white, 46, 22, 68, 14, 6);
+    circ(g, C.blue, 62, 20, 8, 4);
+    eyes(g, 56);
+    circ(g, C.red, 80, 78, 13, 5);
+    box(g, C.red, 60, 92, 40, 8, 4, 0);
+    bodyBase(g, 0xffe14d);
+    circ(g, C.red, 56, 110, 8, 4);
+    circ(g, C.blue, 100, 118, 8, 4);
+    box(g, C.white, 38, 92, 84, 14, 6, 0);
+    arms(g, 0xfff0dd);
+    break;
+  case 2: // korsan
+    box(g, C.red, 40, 16, 80, 26, 10);
+    box(g, C.red, 112, 24, 30, 14, 5, 0);
+    faceBase(g, C.skin2);
+    box(g, C.red, 42, 18, 76, 22, 8);
+    box(g, C.out, 44, 52, 72, 10, 4, 0);       // göz bandı kayışı
+    box(g, C.out, 56, 46, 22, 22, 6, 0);
+    box(g, C.out, 88, 58, 10, 15, 5, 0);
+    box(g, C.out, 68, 82, 22, 6, 3, 0);
+    box(g, C.gold, 116, 62, 8, 16, 4, 3);
+    bodyBase(g, 0x2f2b45);
+    box(g, C.white, 38, 92, 84, 16, 6, 0);
+    box(g, 0x8b5a2b, 38, 122, 84, 14, 5, 0);
+    arms(g, C.skin2);
+    break;
+  case 3: // hanım patron
+    box(g, 0xd94f8a, 34, 20, 92, 90, 26);      // saç
+    faceBase(g, C.skin);
+    box(g, 0xd94f8a, 42, 18, 76, 24, 10);
+    eyes(g);
+    box(g, C.red, 70, 80, 20, 8, 4, 0);
+    bodyBase(g, 0x7a4dd6);
+    box(g, C.white, 68, 92, 24, 26, 6, 0);
+    circ(g, C.gold, 80, 122, 7, 4);
+    arms(g, C.skin);
+    break;
+  case 4: // sumo patron
+    box(g, 0x2b2545, 46, 20, 68, 24, 12);
+    circ(g, 0x2b2545, 80, 26, 15, 5);
+    faceBase(g, C.skin2);
+    eyes(g);
+    box(g, C.out, 64, 82, 32, 8, 4, 0);
+    box(g, C.skin2, 26, 92, 108, 62, 24);
+    g.lineStyle(6, C.out, 1); g.strokeRoundedRect(26, 92, 108, 62, 24);
+    box(g, 0x1f4fa8, 26, 116, 108, 24, 6, 0);
+    circ(g, C.skin2, 22, 128, 17);
+    circ(g, C.skin2, 138, 128, 17);
+    break;
+  }
+}
+
+function buildTextures(scene){
+  /* arka plan: mor duvar + pembe çizgili zemin */
+  mk(scene, 'bg', W, H, g => {
+    g.fillStyle(C.wall,1); g.fillRect(0,0,W,378);
+    g.fillStyle(C.wallD,1);
+    for (let i=0;i<7;i++){ g.fillCircle(70+i*100, 150+((i%3)*46), 16); }
+    for (let y=378; y<H; y+=26){
+      g.fillStyle(((y/26)|0)%2 ? C.floorA : C.floorB, 1);
+      g.fillRect(0, y, W, 26);
+    }
+  });
+
+  /* masalar */
+  mk(scene, 'desk', 210, 108, g => {
+    box(g, C.woodD, 26, 62, 22, 44, 6);
+    box(g, C.woodD, 162, 62, 22, 44, 6);
+    box(g, C.wood, 12, 30, 186, 40, 8);
+    box(g, C.woodT, 4, 8, 202, 30, 10);
+  });
+  mk(scene, 'bossdesk', 280, 118, g => {
+    box(g, C.woodD, 34, 66, 26, 50, 6);
+    box(g, C.woodD, 220, 66, 26, 50, 6);
+    box(g, C.wood, 18, 34, 244, 42, 8);
+    box(g, C.woodT, 6, 8, 268, 32, 10);
+  });
+
+  /* oyuncak (taş fil) */
+  mk(scene, 'toy', 40, 34, g => {
+    box(g, C.toy, 4, 12, 32, 20, 8);
+    box(g, C.toy, 20, 2, 16, 18, 7);
+    box(g, C.toy, 30, 12, 8, 16, 4);
+    circ(g, C.toyD, 14, 20, 5, 0);
+    circ(g, C.white, 28, 9, 3, 0);
+    circ(g, C.out, 28, 9, 1.6, 0);
+  });
+
+  /* işçiler & patronlar */
+  for (let i=0;i<9;i++) mk(scene, 'w'+i, 160, 180, g => drawWorker(g, i));
+  for (let i=0;i<5;i++) mk(scene, 'b'+i, 160, 180, g => drawBoss(g, i));
+
+  /* kilit */
+  mk(scene, 'lock', 70, 78, g => {
+    g.lineStyle(12, C.out, 1); g.beginPath();
+    g.arc(35, 32, 18, Math.PI, 0); g.strokePath();
+    box(g, C.grey, 8, 30, 54, 44, 10);
+    circ(g, C.out, 35, 50, 6, 0);
+    box(g, C.out, 32, 50, 6, 14, 3, 0);
+  });
+
+  /* uçan hediye */
+  mk(scene, 'gift', 120, 78, g => {
+    box(g, C.white, 2, 22, 34, 30, 8);
+    box(g, C.white, 84, 22, 34, 30, 8);
+    box(g, 0xff4fa3, 34, 14, 52, 50, 10);
+    box(g, C.gold, 54, 14, 12, 50, 3, 0);
+    box(g, C.gold, 34, 32, 52, 12, 3, 0);
+  });
+
+  /* para & altın ikonları */
+  mk(scene, 'icoGold', 54, 54, g => {
+    circ(g, C.goldD, 27, 30, 22);
+    circ(g, C.gold, 27, 26, 22);
+    box(g, C.goldD, 23, 16, 8, 22, 3, 0);
+  });
+  mk(scene, 'icoCash', 62, 44, g => {
+    box(g, C.cashD, 4, 8, 54, 32, 6);
+    box(g, C.cash, 4, 4, 54, 32, 6);
+    circ(g, C.cashD, 31, 20, 10, 4);
+  });
+  mk(scene, 'icoBolt', 46, 56, g => {
+    tri(g, C.gold, [{x:26,y:2},{x:6,y:32},{x:20,y:32},{x:14,y:54},{x:40,y:22},{x:24,y:22}], 5);
+  });
+  mk(scene, 'icoCup', 56, 58, g => {
+    box(g, C.gold, 12, 6, 32, 30, 8);
+    g.lineStyle(6, C.out, 1);
+    g.strokeCircle(10, 18, 9); g.strokeCircle(46, 18, 9);
+    box(g, C.goldD, 22, 34, 12, 12, 3);
+    box(g, C.goldD, 10, 44, 36, 10, 4);
+  });
+}
+
+/* ============================================================
+   OYUN DURUMU
+   ============================================================ */
+const SAVE_KEY = 'sores_idle_v1';
+const HIRE_COST = [0, 60, 350, 1800, 9000, 45000, 220000, 1100000, 6000000];
+const MAX_LV = 19;                       // 5 + 19*5 = 100 ürün
+const BASE_TIME = 2.2;                   // saniye / ürün
+
+function newState(){
+  return {
+    cash: 0, gold: 0,
+    bossLv: 0,                           // satış fiyatı seviyesi
+    tapLv: 0, speedLv: 0,                // altın yükseltmeleri
+    desks: Array.from({length:9}, (_,i) => ({ open: i===0, lv:0, stock:0, prog:0 })),
+    sold: 0, hired: 1,
+    t: Date.now()
+  };
+}
+let S = newState();
+
+const G = {
+  capOf:  d => 5 + d.lv*5,
+  rateOf: d => (1/BASE_TIME) * (1 + d.lv*0.06) * (1 + S.speedLv*0.10),
+  upCost: d => Math.floor(30 * Math.pow(1.5, d.lv)),
+  price:  () => Math.pow(1.55, S.bossLv),
+  tapPow: () => 1 + S.tapLv*0.5,
+  bossUpCost: () => Math.floor(250 * Math.pow(2.05, S.bossLv)),
+  tapUpCost:  () => 3 + S.tapLv*2,
+  spdUpCost:  () => 5 + S.speedLv*3
+};
+
+function save(){
+  S.t = Date.now();
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch(e){}
+}
+function load(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return 0;
+    const d = JSON.parse(raw);
+    S = Object.assign(newState(), d);
+    S.desks = d.desks && d.desks.length === 9 ? d.desks : newState().desks;
+    const away = Math.min((Date.now() - (d.t||Date.now()))/1000, 8*3600);
+    return away > 60 ? away : 0;
+  } catch(e){ return 0; }
+}
+
+/* ============================================================
+   ANA SAHNE
+   ============================================================ */
+class Game extends Phaser.Scene {
+  constructor(){ super('game'); }
+
+  create(){
+    buildTextures(this);
+
+    this.boost = 0;                    // tıklama ile artan hız
+    this.buffCash = 0;                 // 2x para süresi
+    this.buffTap = 0;                  // 10x tıklama süresi
+    this.deskUI = [];
+
+    this.add.image(0,0,'bg').setOrigin(0);
+
+    this.buildBoss();
+    this.buildDesks();
+    this.buildHUD();
+    this.buildBottomBar();
+    this.buildPanel();
+
+    /* ekrana her dokunuş üretimi hızlandırır */
+    this.input.on('pointerdown', p => {
+      if (this.panelOpen) return;
+      const add = 0.55 * G.tapPow() * (this.buffTap>0 ? 10 : 1);
+      this.boost = Math.min(this.boost + add, 6 * G.tapPow() * (this.buffTap>0?10:1));
+      this.ripple(p.x, p.y);
+    });
+
+    const away = load();
+    this.refreshAll();
+    if (away) this.applyOffline(away);
+
+    this.time.addEvent({ delay:5000, loop:true, callback: save });
+    this.time.addEvent({ delay:Phaser.Math.Between(35000,60000), loop:true, callback: () => this.spawnGift() });
+    window.addEventListener('pagehide', save);
+
+    /* uygulama arka plana atılınca Phaser durur → dönünce geçen süreyi telafi et */
+    this._hidAt = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden){ this._hidAt = Date.now(); save(); }
+      else if (this._hidAt){
+        const sec = Math.min((Date.now() - this._hidAt)/1000, 8*3600);
+        this._hidAt = 0;
+        if (sec > 20) this.applyOffline(sec);
+      }
+    });
+  }
+
+  /* ---------------- PATRON ---------------- */
+  buildBoss(){
+    const cx = W/2, cy = 286;
+    this.bossSpr = this.add.image(cx, cy-58, 'b0').setScale(0.95);
+    this.add.image(cx, cy+16, 'bossdesk');
+
+    this.tweens.add({ targets:this.bossSpr, y:cy-68, duration:900, yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
+
+    this.bossHit = this.add.rectangle(cx, cy-20, 300, 200, 0xffffff, 0).setInteractive({useHandCursor:true});
+    this.bossHit.on('pointerdown', () => this.sellAll());
+
+    this.bossTag = this.add.text(cx, cy+68, 'SATMAK İÇİN DOKUN', F(20,'#ffe9a8')).setOrigin(0.5);
+    this.tweens.add({ targets:this.bossTag, alpha:0.35, duration:800, yoyo:true, repeat:-1 });
+
+    /* çerçeve: mevcut ürün */
+    const fx = 120, fy = 250;
+    this.add.rectangle(fx, fy, 130, 130, 0xffffff).setStrokeStyle(6, C.out);
+    this.add.image(fx, fy-6, 'toy').setScale(1.5);
+    this.priceTxt = this.add.text(fx, fy+44, '', F(20,'#ffd447')).setOrigin(0.5);
+  }
+
+  /* ---------------- MASALAR ---------------- */
+  buildDesks(){
+    for (let i=0;i<9;i++){
+      const col = i%3, row = (i/3)|0;
+      const cx = 120 + col*240;
+      const cy = 470 + row*232;
+      const u = { i, cx, cy, lastStock:-1, toys:[] };
+
+      u.worker = this.add.image(cx-26, cy-42, 'w'+i).setScale(0.78);
+      u.desk   = this.add.image(cx, cy+34, 'desk').setScale(0.92);
+
+      u.stack = this.add.container(cx+64, cy+18);
+      u.stackTxt = this.add.text(cx+64, cy-92, '', F(20,'#ffffff')).setOrigin(0.5);
+
+      u.pie = this.add.graphics();
+
+      /* yükseltme çipi */
+      u.chip = this.add.container(cx, cy+92);
+      const chipBg = this.add.rectangle(0,0,164,38, C.green).setStrokeStyle(5, C.out);
+      u.chipTxt = this.add.text(0,0,'', F(17,'#ffffff')).setOrigin(0.5);
+      u.chip.add([chipBg, u.chipTxt]);
+      chipBg.setInteractive({useHandCursor:true}).on('pointerdown', e => { this.upgradeDesk(i); });
+      u.chipBg = chipBg;
+
+      /* kilit katmanı */
+      u.lockG = this.add.container(cx, cy+10);
+      const lb = this.add.rectangle(0,0,224,220, 0x1a1430, 0.62).setStrokeStyle(5, C.out);
+      const li = this.add.image(0,-42,'lock');
+      const lp = this.add.text(0,42,'', F(21,'#ffd447')).setOrigin(0.5);
+      const lc = this.add.text(0,74,'İŞÇİ AL', F(17,'#ffffff')).setOrigin(0.5);
+      u.lockG.add([lb, li, lp, lc]);
+      u.lockPrice = lp;
+      lb.setInteractive({useHandCursor:true}).on('pointerdown', () => this.hire(i));
+
+      /* masaya dokunmak da hızlandırır (global handler zaten yakalar) */
+      this.deskUI.push(u);
+    }
+  }
+
+  /* ---------------- HUD ---------------- */
+  buildHUD(){
+    this.add.rectangle(W/2, 58, W, 118, C.panelD).setStrokeStyle(6, C.out);
+
+    this.add.image(44, 34, 'icoGold').setScale(0.86);
+    this.goldTxt = this.add.text(78, 16, '0', F(30,'#ffd447'));
+
+    this.add.image(44, 86, 'icoCash').setScale(0.86);
+    this.cashTxt = this.add.text(78, 68, '0', F(30,'#8ff09b'));
+
+    this.buffTxt = this.add.text(W-16, 22, '', F(19,'#ffb0f0')).setOrigin(1,0);
+    this.boostTxt = this.add.text(W-16, 62, '', F(22,'#ffe066')).setOrigin(1,0);
+  }
+
+  /* ---------------- ALT BAR ---------------- */
+  buildBottomBar(){
+    const y = 1214;
+    this.add.rectangle(W/2, y, W, 132, C.panelD).setStrokeStyle(6, C.out);
+    const items = [
+      {t:'FABRİKA', ico:null,      key:'factory'},
+      {t:'PATRON',  ico:'icoCup',  key:'boss'},
+      {t:'GÜÇLER',  ico:'icoBolt', key:'power'},
+      {t:'AYARLAR', ico:null,      key:'set'}
+    ];
+    items.forEach((it, k) => {
+      const x = 90 + k*180;
+      const bg = this.add.rectangle(x, y, 168, 112, k===0 ? C.blue : C.panelL).setStrokeStyle(5, C.out);
+      if (it.ico) this.add.image(x, y-16, it.ico).setScale(0.9);
+      else {
+        const g = this.add.graphics();
+        g.fillStyle(k===0?C.woodT:C.grey,1); g.fillRoundedRect(x-30, y-40, 60, 46, 8);
+        g.lineStyle(5,C.out,1); g.strokeRoundedRect(x-30, y-40, 60, 46, 8);
+      }
+      this.add.text(x, y+34, it.t, F(18,'#ffffff')).setOrigin(0.5);
+      bg.setInteractive({useHandCursor:true}).on('pointerdown', () => this.openPanel(it.key));
+    });
+  }
+
+  /* ---------------- PANEL ---------------- */
+  buildPanel(){
+    this.panelOpen = false;
+    this.panel = this.add.container(0,0).setDepth(50).setVisible(false);
+    const dim = this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.62).setInteractive();
+    dim.on('pointerdown', () => this.closePanel());
+    const card = this.add.rectangle(W/2, 556, 620, 500, C.panel).setStrokeStyle(7, C.out);
+    this.panelTitle = this.add.text(W/2, 360, '', F(34,'#ffffff')).setOrigin(0.5);
+    const close = this.add.rectangle(W/2+266, 360, 60, 60, C.red).setStrokeStyle(5, C.out).setInteractive({useHandCursor:true});
+    const closeX = this.add.text(W/2+266, 360, 'X', F(26,'#ffffff')).setOrigin(0.5);
+    close.on('pointerdown', () => this.closePanel());
+    this.panelBody = this.add.container(0,0);
+    this.panel.add([dim, card, this.panelTitle, close, closeX, this.panelBody]);
+  }
+
+  openPanel(key){
+    if (key === 'factory'){ this.toast('Fabrika zaten açık!', '#8ff09b'); return; }
+    this.panelBody.removeAll(true);
+    this.panelOpen = true;
+    this.panel.setVisible(true);
+
+    const row = (idx, title, desc, costTxt, costCol, cb) => {
+      const y = 440 + idx*112;
+      const bg = this.add.rectangle(W/2, y, 560, 96, C.panelL).setStrokeStyle(5, C.out);
+      const t1 = this.add.text(W/2-256, y-28, title, F(23,'#ffffff'));
+      const t2 = this.add.text(W/2-256, y+6,  desc,  F(17,'#ffe9a8'));
+      const btn = this.add.rectangle(W/2+206, y, 130, 66, costCol).setStrokeStyle(5, C.out).setInteractive({useHandCursor:true});
+      const bt = this.add.text(W/2+206, y, costTxt, F(19,'#ffffff')).setOrigin(0.5);
+      btn.on('pointerdown', () => { cb(); this.openPanel(key); });
+      this.panelBody.add([bg,t1,t2,btn,bt]);
+    };
+
+    if (key === 'boss'){
+      this.panelTitle.setText('PATRON');
+      row(0, 'Satış Fiyatı  Sv.'+(S.bossLv+1),
+             'Ürün başına ' + fmtP(G.price()) + ' ₺  →  ' + fmtP(G.price()*1.55) + ' ₺',
+             fmt(G.bossUpCost())+'₺', C.cash, () => {
+        if (S.cash >= G.bossUpCost()){ S.cash -= G.bossUpCost(); S.bossLv++; this.toast('Fiyat arttı!', '#8ff09b'); }
+        else this.toast('Yetersiz nakit!', '#ff9b9b');
+      });
+      row(1, 'Toplam Satış', fmt(S.sold) + ' ürün satıldı', '—', C.greyD, () => {});
+      row(2, 'Kupalar', this.trophyText(), '★', C.gold, () => {});
+    }
+    if (key === 'power'){
+      this.panelTitle.setText('GÜÇLER (ALTIN)');
+      row(0, 'Tıklama Gücü  Sv.'+(S.tapLv+1), 'Şu an ×'+G.tapPow().toFixed(1)+' — kalıcı',
+             G.tapUpCost()+'⬤', C.gold, () => {
+        if (S.gold >= G.tapUpCost()){ S.gold -= G.tapUpCost(); S.tapLv++; this.toast('Tıklama gücü arttı!', '#ffd447'); }
+        else this.toast('Yetersiz altın!', '#ff9b9b');
+      });
+      row(1, 'Üretim Hızı  Sv.'+(S.speedLv+1), 'Tüm işçiler +%'+(S.speedLv*10+10)+' — kalıcı',
+             G.spdUpCost()+'⬤', C.gold, () => {
+        if (S.gold >= G.spdUpCost()){ S.gold -= G.spdUpCost(); S.speedLv++; this.toast('Üretim hızlandı!', '#ffd447'); }
+        else this.toast('Yetersiz altın!', '#ff9b9b');
+      });
+      row(2, 'Uçan Hediye', 'Ara sıra ekranda uçar — dokun, ödül kap!', '?', C.blue, () => this.spawnGift());
+    }
+    if (key === 'set'){
+      this.panelTitle.setText('AYARLAR');
+      row(0, 'Kaydet', 'İlerlemeni hemen kaydet', 'KAYDET', C.blue, () => { save(); this.toast('Kaydedildi', '#8ff09b'); });
+      row(1, 'Sıfırla', 'TÜM ilerleme silinir (iki kez dokun)', 'SIFIRLA', C.red, () => {
+        if (this._rst){ localStorage.removeItem(SAVE_KEY); S = newState(); this.closePanel(); this.refreshAll(); this.toast('Oyun sıfırlandı', '#ff9b9b'); }
+        else { this._rst = true; this.toast('Emin misin? Tekrar dokun', '#ff9b9b'); this.time.delayedCall(2500, () => this._rst = false); }
+      });
+      row(2, 'Sürüm', 'Şoreş Oyuncak Fabrikası v1.0 — Aşama 1', 'OK', C.greyD, () => {});
+    }
+  }
+  closePanel(){ this.panelOpen = false; this.panel.setVisible(false); }
+
+  trophyText(){
+    let n = 0;
+    if (S.hired >= 3) n++;
+    if (S.hired >= 9) n++;
+    if (S.sold >= 1000) n++;
+    if (S.sold >= 100000) n++;
+    if (S.desks.some(d => d.lv >= MAX_LV)) n++;
+    return n + ' / 5 kupa kazanıldı';
+  }
+
+  /* ---------------- AKSİYONLAR ---------------- */
+  hire(i){
+    const d = S.desks[i];
+    if (d.open) return;
+    const openCount = S.desks.filter(x=>x.open).length;
+    const cost = HIRE_COST[openCount];
+    if (S.cash < cost){ this.toast('Yetersiz nakit: '+fmt(cost)+'₺', '#ff9b9b'); return; }
+    S.cash -= cost; d.open = true; S.hired++;
+    S.gold += 3;
+    this.toast('+3 altın · Yeni işçi işbaşı!', '#ffd447');
+    this.pop(this.deskUI[i].worker);
+    this.refreshAll();
+    save();
+  }
+
+  upgradeDesk(i){
+    const d = S.desks[i];
+    if (!d.open) return;
+    if (d.lv >= MAX_LV){ this.toast('Masa zaten maksimum!', '#ffd447'); return; }
+    const c = G.upCost(d);
+    if (S.cash < c){ this.toast('Yetersiz nakit: '+fmt(c)+'₺', '#ff9b9b'); return; }
+    S.cash -= c; d.lv++;
+    if (d.lv % 5 === 0){ S.gold += 2; this.toast('+2 altın · Masa Sv.'+(d.lv+1), '#ffd447'); }
+    this.pop(this.deskUI[i].desk);
+    this.refreshHUD();
+    save();
+  }
+
+  sellAll(){
+    let total = 0;
+    S.desks.forEach(d => { total += d.stock; d.stock = 0; });
+    if (total === 0){ this.toast('Satacak ürün yok!', '#ff9b9b'); return; }
+    const mult = this.buffCash > 0 ? 2 : 1;
+    const money = total * G.price() * mult;
+    S.cash += money; S.sold += total;
+    this.pop(this.bossSpr, 1.12);
+    this.float(W/2, 210, '+'+fmt(money)+'₺' + (mult>1?' ×2':''), '#8ff09b', 30);
+    /* uçan ürün animasyonu */
+    for (let k=0;k<Math.min(total,10);k++){
+      const src = this.deskUI[k % 9];
+      const t = this.add.image(src.cx+60, src.cy, 'toy').setScale(0.8).setDepth(30);
+      this.tweens.add({ targets:t, x:W/2, y:270, scale:0.2, duration:340+k*24, ease:'Cubic.easeIn',
+                        onComplete: () => t.destroy() });
+    }
+    this.refreshAll();
+  }
+
+  applyOffline(sec){
+    let made = 0;
+    S.desks.forEach(d => {
+      if (!d.open) return;
+      const cap = G.capOf(d);
+      const n = Math.min(cap - d.stock, Math.floor(G.rateOf(d) * sec));
+      if (n > 0){ d.stock += n; made += n; }
+    });
+    if (made > 0){
+      const dk = Math.floor(sec/60);
+      this.toast('Yokken '+fmt(made)+' ürün üretildi ('+dk+' dk)', '#ffd447');
+      this.refreshAll();
+    }
+  }
+
+  spawnGift(){
+    if (this.gift && this.gift.active) return;
+    const y = Phaser.Math.Between(400, 1000);
+    const fromLeft = Math.random() < 0.5;
+    const g = this.add.image(fromLeft ? -80 : W+80, y, 'gift').setDepth(40).setScale(0.9);
+    g.setInteractive({useHandCursor:true});
+    this.gift = g;
+    this.tweens.add({ targets:g, y:y-40, duration:500, yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
+    this.tweens.add({ targets:g, x: fromLeft ? W+90 : -90, duration:9000, ease:'Linear',
+                      onComplete: () => g.destroy() });
+    g.on('pointerdown', () => {
+      const r = Math.random();
+      if (r < 0.4){ const a = Phaser.Math.Between(5,15); S.gold += a; this.float(g.x, g.y, '+'+a+' ALTIN', '#ffd447', 30); }
+      else if (r < 0.7){ this.buffCash = 30; this.float(g.x, g.y, '2x PARA · 30sn', '#8ff09b', 28); }
+      else { this.buffTap = 20; this.float(g.x, g.y, '10x TIKLAMA · 20sn', '#ff9bf0', 26); }
+      g.destroy(); this.refreshHUD();
+    });
+  }
+
+  /* ---------------- EFEKTLER ---------------- */
+  toast(msg, col){
+    if (this.toastObj) this.toastObj.destroy();
+    const t = this.add.text(W/2, 1120, msg, F(22, col||'#ffffff')).setOrigin(0.5).setDepth(60);
+    this.toastObj = t;
+    this.tweens.add({ targets:t, y:1090, alpha:0, delay:900, duration:600, onComplete: () => t.destroy() });
+  }
+  float(x, y, msg, col, size){
+    const t = this.add.text(x, y, msg, F(size||24, col)).setOrigin(0.5).setDepth(60);
+    this.tweens.add({ targets:t, y:y-90, alpha:0, duration:900, onComplete: () => t.destroy() });
+  }
+  pop(obj, sc){
+    this.tweens.add({ targets:obj, scaleX:(obj.scaleX)*(sc||1.15), scaleY:(obj.scaleY)*(sc||1.15),
+                      duration:90, yoyo:true });
+  }
+  ripple(x, y){
+    const c = this.add.circle(x, y, 12, 0xffffff, 0.5).setDepth(45);
+    this.tweens.add({ targets:c, radius:46, alpha:0, duration:280, onComplete: () => c.destroy() });
+  }
+
+  /* ---------------- GÜNCELLEME ---------------- */
+  refreshHUD(){
+    this.goldTxt.setText(fmt(S.gold));
+    this.cashTxt.setText(fmt(S.cash) + '₺');
+    this.priceTxt.setText(fmtP(G.price()) + '₺');
+    let b = '';
+    if (this.buffCash > 0) b += '2x PARA ' + Math.ceil(this.buffCash) + 's\n';
+    if (this.buffTap  > 0) b += '10x TIK ' + Math.ceil(this.buffTap) + 's';
+    this.buffTxt.setText(b);
+    this.boostTxt.setText(this.boost > 0.15 ? 'HIZ ×' + (1+this.boost).toFixed(1) : '');
+  }
+
+  refreshDesk(i){
+    const u = this.deskUI[i], d = S.desks[i];
+    const openCount = S.desks.filter(x=>x.open).length;
+
+    if (!d.open){
+      u.lockG.setVisible(true);
+      u.worker.setVisible(false);
+      u.chip.setVisible(false);
+      u.stackTxt.setVisible(false);
+      const isNext = (i === S.desks.findIndex(x => !x.open));
+      u.lockPrice.setText(isNext ? fmt(HIRE_COST[openCount]) + '₺' : 'KİLİTLİ');
+      u.lockG.setAlpha(isNext ? 1 : 0.72);
+      return;
+    }
+    u.lockG.setVisible(false);
+    u.worker.setVisible(true);
+    u.chip.setVisible(true);
+    u.stackTxt.setVisible(true);
+
+    const maxed = d.lv >= MAX_LV;
+    u.chipTxt.setText(maxed ? 'MAKS · 100' : 'Sv.'+(d.lv+1)+'  ⬆ '+fmt(G.upCost(d))+'₺');
+    u.chipBg.fillColor = maxed ? C.greyD : (S.cash >= G.upCost(d) ? C.green : C.greyD);
+  }
+
+  refreshStack(i){
+    const u = this.deskUI[i], d = S.desks[i];
+    if (u.lastStock === d.stock) return;
+    u.lastStock = d.stock;
+    const show = Math.min(d.stock, 8);
+    while (u.toys.length < show){
+      const t = this.add.image(0, -u.toys.length*12, 'toy').setScale(0.68);
+      u.stack.add(t); u.toys.push(t);
+    }
+    while (u.toys.length > show){ const t = u.toys.pop(); t.destroy(); }
+    u.stackTxt.setText(d.stock > 0 ? '×'+d.stock : '');
+    u.stackTxt.setY(u.cy + 18 - show*12 - 22);
+    u.stackTxt.setVisible(d.stock > 0);
+  }
+
+  refreshAll(){
+    this.refreshHUD();
+    for (let i=0;i<9;i++){ this.refreshDesk(i); this.refreshStack(i); }
+  }
+
+  update(time, delta){
+    const dt = delta/1000;
+
+    if (this.boost > 0)     this.boost = Math.max(0, this.boost - dt*0.9);
+    if (this.buffCash > 0)  this.buffCash = Math.max(0, this.buffCash - dt);
+    if (this.buffTap  > 0)  this.buffTap  = Math.max(0, this.buffTap - dt);
+
+    const mult = 1 + this.boost;
+
+    for (let i=0;i<9;i++){
+      const d = S.desks[i], u = this.deskUI[i];
+      u.pie.clear();
+      if (!d.open) continue;
+
+      const cap = G.capOf(d);
+      if (d.stock < cap){
+        d.prog += G.rateOf(d) * mult * dt;
+        while (d.prog >= 1 && d.stock < cap){ d.prog -= 1; d.stock++; }
+        if (d.stock >= cap) d.prog = 0;
+      } else d.prog = 0;
+
+      /* üretim pastası */
+      const px = u.cx - 58, py = u.cy + 40, r = 16;
+      u.pie.fillStyle(0xffffff, 1); u.pie.fillCircle(px, py, r);
+      u.pie.fillStyle(d.stock >= cap ? C.red : C.green, 1);
+      u.pie.slice(px, py, r-2, Phaser.Math.DegToRad(-90),
+                  Phaser.Math.DegToRad(-90 + 360*(d.stock>=cap?1:d.prog)), false);
+      u.pie.fillPath();
+      u.pie.lineStyle(5, C.out, 1); u.pie.strokeCircle(px, py, r);
+
+      /* çalışma sallanması */
+      u.worker.y = u.cy - 42 + Math.sin(time*0.006*mult + i) * (2 + this.boost);
+
+      this.refreshStack(i);
+    }
+
+    if (!this._acc || time - this._acc > 200){ this._acc = time; this.refreshHUD(); for (let i=0;i<9;i++) this.refreshDesk(i); }
+  }
+}
+
+window.GAME = new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: 'game',
+  backgroundColor: '#1b1730',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
+  render: { antialias: true, roundPixels: false },
+  scene: [Game]
+});
+</script>
+</body>
+</html>

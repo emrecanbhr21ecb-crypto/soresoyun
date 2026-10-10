@@ -1,0 +1,13 @@
+node_modules/
+*.log
+.DS_Store
+android/build/
+android/.gradle/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/
+
+# Yayin imzalama — asla depoya girmez
+android/keystore.properties
+android/*.keystore
+android/*.jks
